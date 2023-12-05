@@ -1,6 +1,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const WebSocket = require('ws');
+const path = require('path');
 const tmpFolderConfigPath = './tmp'; // Replace with the actual tmp folder path
 const sizeLimitInBytes = 10 * 1024 * 1024 * 1024; // 10 GB in bytes
 
@@ -180,6 +181,56 @@ function s(input) {
   return input;
 }
 
+
+function calculateHash(filePath) {
+  const data = fs.readFileSync(filePath);
+  const hash = crypto.createHash('sha256');
+  hash.update(data);
+  return hash.digest('hex');
+}
+
+function calculateCombinedHash(directoryPath, execpath) {
+  const fileHashes = [];
+  const execHashes = [];
+  console.log(execpath);
+  // Read all files in the directory
+  const files = fs.readdirSync(directoryPath);
+  const execFiles = fs.readdirSync(execpath);
+
+  // Calculate hash for each file (excluding the specified folder)
+  files.forEach((file) => {
+    const filePath = path.join(directoryPath, file);
+    if (fs.statSync(filePath).isFile() && !filePath.includes("tmp")) {
+      const fileHash = calculateHash(filePath);
+      fileHashes.push(fileHash);
+    }
+  });
+  execFiles.forEach((file) => {
+    const filePath = path.join(execpath, file);
+    if (fs.statSync(filePath).isFile()) {
+      const fileHash = calculateHash(filePath);
+      execHashes.push(fileHash);
+    }
+  });
+
+  // Combine hashes into a single string and calculate hash
+  const combinedHash = crypto.createHash('sha256');
+  combinedHash.update(fileHashes.join(''));
+
+  const execHash = crypto.createHash('sha256');
+  execHash.update(execHashes.join(''));
+
+  const answer = {
+    firstHash: combinedHash.digest('hex'),
+    secondHash: execHash.digest('hex'),
+  };
+
+  return answer;
+  //return combinedHash.digest('hex');
+}
+
+
+
 function deleteBroadcasterFile(broadcasterId, broadcasterData) {
   try {
     const fileName = broadcasterId + "." + broadcasterData.filetype;
@@ -244,4 +295,4 @@ function sendEventsToAllProviders(json, ws){
 
 
 
-return module.exports = { sendEventsToAllProviders, generateId , tmpFolderConfigPath, s, deepReplaceEscapeSequences, deleteBroadcasterFile, storeFullVideoData, generateMD5Checksum, checkNewFileTmpFolderSize, fs, WebSocket, ChunkData};
+return module.exports = { sendEventsToAllProviders, generateId , tmpFolderConfigPath, s, deepReplaceEscapeSequences, deleteBroadcasterFile, storeFullVideoData, generateMD5Checksum, checkNewFileTmpFolderSize, fs, WebSocket, ChunkData, path, calculateCombinedHash};

@@ -1,17 +1,17 @@
-const { WebSocket, sendEventsToAllProviders, generateId, tmpFolderConfigPath, s, fs, deleteBroadcasterFile, generateMD5Checksum, storeFullVideoData, checkNewFileTmpFolderSize, ChunkData } = require('./utility.js');
+const { WebSocket, sendEventsToAllProviders, generateId, tmpFolderConfigPath, s, fs, deleteBroadcasterFile, generateMD5Checksum, storeFullVideoData, checkNewFileTmpFolderSize, ChunkData, path, calculateCombinedHash } = require('./utility.js');
 const express = require("express");
-const path = require('path');
 const app = express();
 const http = require("http");
 const server = http.Server(app);
 const wss = new WebSocket.Server({ server });
+//Generate our authentication key!
 server.listen(3000, function() {
   console.log("listening on 3000");
 });
 const safeSize = (10 ** 6 / 4) + 1044//
 const tmpFolderPath = tmpFolderConfigPath;
 let gateway;//For our gateway websocket!
-
+const key = calculateCombinedHash(__dirname, path.join(path.dirname('./')));
 // arrays to store connected clients
 let requesters = [];
 let providers = [];
@@ -498,16 +498,14 @@ async function sendForwardStreamMessage(ws, messageData) {
 
             // Wait for the full video data to be stored in the cache
             if (checkNewFileTmpFolderSize(fullVideoBuffer.byteLength) === true){
-              /*storeFullVideoData(broadcasterId, fullVideoBuffer, ws).then(() => {
+              storeFullVideoData(broadcasterId, fullVideoBuffer, ws).then(() => {
                   delete dataObject[broadcasterId];
                   delete fullVideoBuffer;
                 }).catch((e) =>{
                   delete dataObject[broadcasterId];
                   delete fullVideoBuffer;
                   console.log(e);
-                });*/
-                delete dataObject[broadcasterId];
-                delete fullVideoBuffer;
+                });
               }else{
                 console.log('New File Size is too large.');
                 console.log('Clearing from cache!');
@@ -751,6 +749,7 @@ wsGateway.on('open', () => {
     messageType: 'Initialize',
     domain: 'mature-thrush-manually.ngrok-free.app',
     port: '443',
+    key: key,
     streamersAmount: streamers.length || 0,
     broadcastersAmount: broadcasters.length || 0,
     requestersAmount: requesters.length || 0,
@@ -782,6 +781,11 @@ wsGateway.on('message', (event) => {
   }catch(error){
     console.log(error);
   }
+});
+
+wsGateway.on('close', (event) =>{
+  console.log('WebSocket Gateway connection closed');
+  stopHeartbeat();
 });
 }catch(e){
   console.log(e);
