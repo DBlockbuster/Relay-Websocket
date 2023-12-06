@@ -295,4 +295,4 @@ function sendEventsToAllProviders(json, ws){
 
 
 
-return module.exports = { sendEventsToAllProviders, generateId , tmpFolderConfigPath, s, deepReplaceEscapeSequences, deleteBroadcasterFile, storeFullVideoData, generateMD5Checksum, checkNewFileTmpFolderSize, fs, WebSocket, ChunkData, path, calculateCombinedHash};
+return module.exports = { crypto, sendEventsToAllProviders, generateId , tmpFolderConfigPath, s, deepReplaceEscapeSequences, deleteBroadcasterFile, storeFullVideoData, generateMD5Checksum, checkNewFileTmpFolderSize, fs, WebSocket, ChunkData, path, calculateCombinedHash};

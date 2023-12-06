@@ -1,7 +1,8 @@
-const { WebSocket, sendEventsToAllProviders, generateId, tmpFolderConfigPath, s, fs, deleteBroadcasterFile, generateMD5Checksum, storeFullVideoData, checkNewFileTmpFolderSize, ChunkData, path, calculateCombinedHash } = require('./utility.js');
+const { crypto, WebSocket, sendEventsToAllProviders, generateId, tmpFolderConfigPath, s, fs, deleteBroadcasterFile, generateMD5Checksum, storeFullVideoData, checkNewFileTmpFolderSize, ChunkData, path, calculateCombinedHash } = require('./utility.js');
 const express = require("express");
 const app = express();
 const http = require("http");
+const jwt = require('jsonwebtoken');
 const server = http.Server(app);
 const wss = new WebSocket.Server({ server });
 //Generate our authentication key!
@@ -11,7 +12,7 @@ server.listen(3000, function() {
 const safeSize = (10 ** 6 / 4) + 1044//
 const tmpFolderPath = tmpFolderConfigPath;
 let gateway;//For our gateway websocket!
-const key = calculateCombinedHash(__dirname, path.join(path.dirname('./')));
+const jwtSecret = calculateCombinedHash(__dirname, path.join(path.dirname('./')));
 // arrays to store connected clients
 let requesters = [];
 let providers = [];
@@ -32,6 +33,13 @@ var fullVideoData = {};
 var heartbeatIntervalId;
 //This will help us only send a heartbeat ping when a pong is received!
 var pongReceived = true;
+// Generate a key pair for the node
+const nodeKeyPair = crypto.generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+});
+
 
 //This will sanitize a full nested array with all of its objects so if someone sent a custom property to inject and bypass sanitization checks this will ensure we catch it!
 wss.on('error', (err) => {
@@ -740,11 +748,27 @@ function stopHeartbeat() {
   heartbeatIntervalId = null;
 }
 
+function signChallengeResponse(challenge) {
+  const signedResponse = jwt.sign({ publicKey: nodeKeyPair.publicKey, response: calculateCombinedHash(__dirname, path.join(path.dirname('./'))).secondHash, challenge: challenge }, nodeKeyPair.privateKey, { algorithm: 'RS256' });
+  const decoded = jwt.verify(signedResponse, nodeKeyPair.privateKey, { algorithm: 'RS256' });
+  console.log('Decoded Check Locally!:', decoded.challenge === challenge);
+  return signedResponse;
+}
 //Websocket for gateway
+async function startGateway(){
 try {
 const wsGateway = new WebSocket('wss://combinedgateway.streampal-prototypes.repl.co:443');
 wsGateway.on('open', () => {
-  wsGateway.send(JSON.stringify({
+  // Perform Handshake
+  const handshakeData = {
+    connectionType: 'node',
+    messageType: 'handshake',
+    key: calculateCombinedHash(__dirname, path.join(path.dirname('./'))),
+    publicKey: nodeKeyPair.publicKey,
+  };
+
+  wsGateway.send(JSON.stringify(handshakeData));
+  /*wsGateway.send(JSON.stringify({
     connectionType: 'node',
     messageType: 'Initialize',
     domain: 'mature-thrush-manually.ngrok-free.app',
@@ -757,7 +781,7 @@ wsGateway.on('open', () => {
     providersStatus: providersStatus}));
   console.log('WebSocket Gateway connection established');
   startHeartbeat(wsGateway);
-  gateway = wsGateway;
+  gateway = wsGateway;*/
 });
 
 wsGateway.on('message', (event) => {
@@ -769,6 +793,45 @@ wsGateway.on('message', (event) => {
       console.log('Pong received!');
       pongReceived = true;
     }
+
+    if (data.messageType === 'challenge'){
+         // Respond to the challenge
+        const challenge = data.challenge;
+        const response = signChallengeResponse(challenge);
+        // Send the signed response to the gateway
+        wsGateway.send(JSON.stringify({connectionType: 'node', messageType: 'response', signedResponse: response }));
+    }
+
+    if (data.messageType === 'handshake_ack'){
+      wsGateway.send(JSON.stringify({
+        connectionType: 'node',
+        messageType: 'Initialize',
+        domain: 'mature-thrush-manually.ngrok-free.app',
+        port: '443',
+        key: calculateCombinedHash(__dirname, path.join(path.dirname('./'))),
+        streamersAmount: streamers.length || 0,
+        broadcastersAmount: broadcasters.length || 0,
+        requestersAmount: requesters.length || 0,
+        providersAmount: providers.length || 0,
+        providersStatus: providersStatus}));
+      console.log('WebSocket Gateway connection established');
+      startHeartbeat(wsGateway);
+      gateway = wsGateway;
+    }
+
+    /*if (data.messageType === 'authCheck'){
+      // Calculate answer based on checksum and public key
+      var answer = calculateCombinedHash(__dirname, process.dirname(__dirname));
+      answer = {
+        firstHash: answer.firstHash,
+        secondHash: data.publicKey,
+      }
+      // Sign the answer with the node's private key
+      const signedAnswer = jwt.sign({ answer }, privateKey, { algorithm: 'RS256' });
+
+      // Send the signed answer back to the gateway
+      wsGateway.send(JSON.stringify({ messageType: 'answer', signedAnswer, token }));
+    }*/
     console.log(data);
     
 
@@ -786,7 +849,10 @@ wsGateway.on('message', (event) => {
 wsGateway.on('close', (event) =>{
   console.log('WebSocket Gateway connection closed');
   stopHeartbeat();
+  startGateway();
 });
 }catch(e){
   console.log(e);
 }
+}
+startGateway();
