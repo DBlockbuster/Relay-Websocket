@@ -1,3 +1,3 @@
-# This is deprecated old code
-### please head over to this repo
-https://github.com/john1234brown/DBlockbuster-Storage-Provider-Node
+# This is deprecated Code
+### Please head over to this repo for more recent and up to date version
+https://github.com/john1234brown/DBlockbuster-Storage-Provider-Node/
